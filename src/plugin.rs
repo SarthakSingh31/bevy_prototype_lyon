@@ -53,13 +53,13 @@ impl Plugin for ShapePlugin {
         let stroke_tess = StrokeTessellator::new();
         app.insert_resource(fill_tess)
             .insert_resource(stroke_tess)
+            .add_plugin(RenderShapePlugin)
             .add_stage_after(
                 bevy::app::CoreStage::Update,
                 Stage::Shape,
                 SystemStage::parallel(),
             )
-            .add_system_to_stage(Stage::Shape, mesh_shapes_system)
-            .add_plugin(RenderShapePlugin);
+            .add_system_to_stage(Stage::Shape, mesh_shapes_system);
     }
 }
 
@@ -95,6 +95,48 @@ fn mesh_shapes_system(
     }
 }
 
+struct CcwBuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>(
+    BuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>,
+);
+
+impl<'l, OutputVertex, OutputIndex, Ctor> tess::GeometryBuilder
+    for CcwBuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>
+where
+    OutputVertex: 'l,
+    OutputIndex: std::ops::Add + From<tess::VertexId> + tess::geometry_builder::MaxIndex,
+{
+    fn begin_geometry(&mut self) {
+        self.0.begin_geometry();
+    }
+
+    fn end_geometry(&mut self) -> tess::Count {
+        self.0.end_geometry()
+    }
+
+    fn abort_geometry(&mut self) {
+        self.0.abort_geometry();
+    }
+
+    fn add_triangle(&mut self, a: tess::VertexId, b: tess::VertexId, c: tess::VertexId) {
+        self.0.add_triangle(a, c, b);
+    }
+}
+
+impl<'l, OutputVertex, OutputIndex, Ctor> tess::FillGeometryBuilder
+    for CcwBuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>
+where
+    OutputVertex: 'l,
+    OutputIndex: std::ops::Add + From<tess::VertexId> + tess::geometry_builder::MaxIndex,
+    Ctor: tess::FillVertexConstructor<OutputVertex>,
+{
+    fn add_fill_vertex(
+        &mut self,
+        vertex: tess::FillVertex,
+    ) -> Result<tess::VertexId, tess::geometry_builder::GeometryBuilderError> {
+        self.0.add_fill_vertex(vertex)
+    }
+}
+
 #[allow(clippy::trivially_copy_pass_by_ref)] // lyon takes &FillOptions
 fn fill(
     tess: &mut ResMut<FillTessellator>,
@@ -105,7 +147,10 @@ fn fill(
     if let Err(e) = tess.tessellate_path(
         path,
         &mode.options,
-        &mut BuffersBuilder::new(buffers, VertexConstructor { color: mode.color }),
+        &mut CcwBuffersBuilder(BuffersBuilder::new(
+            buffers,
+            VertexConstructor { color: mode.color },
+        )),
     ) {
         error!("FillTessellator error: {:?}", e);
     }
