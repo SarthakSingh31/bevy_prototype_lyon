@@ -18,9 +18,9 @@ use bevy::{
         render_asset::RenderAssets,
         render_phase::{AddRenderCommand, DrawFunctions, RenderPhase, SetItemPipeline},
         render_resource::{
-            BlendState, ColorTargetState, ColorWrites, FragmentState, FrontFace, MultisampleState,
-            PipelineCache, PolygonMode, PrimitiveState, RenderPipelineDescriptor, Shader,
-            SpecializedRenderPipeline, SpecializedRenderPipelines, TextureFormat,
+            BlendState, ColorTargetState, ColorWrites, Face, FragmentState, FrontFace,
+            MultisampleState, PipelineCache, PolygonMode, PrimitiveState, RenderPipelineDescriptor,
+            Shader, SpecializedRenderPipeline, SpecializedRenderPipelines, TextureFormat,
             VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
         },
         texture::BevyDefault,
@@ -98,8 +98,8 @@ impl SpecializedRenderPipeline for ShapePipeline {
                 self.mesh2d_pipeline.mesh_layout.clone(),
             ]),
             primitive: PrimitiveState {
-                front_face: FrontFace::Cw,
-                cull_mode: None,
+                front_face: FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
                 unclipped_depth: false,
                 polygon_mode: PolygonMode::Fill,
                 conservative: false,

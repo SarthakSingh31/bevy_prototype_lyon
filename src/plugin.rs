@@ -95,6 +95,67 @@ fn mesh_shapes_system(
     }
 }
 
+/// A wrapper around [`BuffersBuilder`] to generate counter-clockwise (Ccw)
+/// meshes. The lyon crate always generates clockwise (Cw) meshes (for now,
+/// might change in version 0.18) so swapping two vertices always allows us to
+/// build the Ccw mesh. More info: https://github.com/nical/lyon/issues/717#issuecomment-934360057
+struct CcwBuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>(
+    BuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>,
+);
+
+impl<'l, OutputVertex, OutputIndex, Ctor> tess::GeometryBuilder
+    for CcwBuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>
+where
+    OutputVertex: 'l,
+    OutputIndex: std::ops::Add + From<tess::VertexId> + tess::geometry_builder::MaxIndex,
+{
+    fn begin_geometry(&mut self) {
+        self.0.begin_geometry();
+    }
+
+    fn end_geometry(&mut self) -> tess::Count {
+        self.0.end_geometry()
+    }
+
+    fn abort_geometry(&mut self) {
+        self.0.abort_geometry();
+    }
+
+    fn add_triangle(&mut self, a: tess::VertexId, b: tess::VertexId, c: tess::VertexId) {
+        self.0.add_triangle(a, c, b);
+    }
+}
+
+impl<'l, OutputVertex, OutputIndex, Ctor> tess::FillGeometryBuilder
+    for CcwBuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>
+where
+    OutputVertex: 'l,
+    OutputIndex: std::ops::Add + From<tess::VertexId> + tess::geometry_builder::MaxIndex,
+    Ctor: tess::FillVertexConstructor<OutputVertex>,
+{
+    fn add_fill_vertex(
+        &mut self,
+        vertex: tess::FillVertex,
+    ) -> Result<tess::VertexId, tess::geometry_builder::GeometryBuilderError> {
+        self.0.add_fill_vertex(vertex)
+    }
+}
+
+impl<'l, OutputVertex, OutputIndex, Ctor> tess::StrokeGeometryBuilder
+    for CcwBuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>
+where
+    OutputVertex: 'l,
+    OutputIndex: std::ops::Add + From<tess::VertexId> + tess::geometry_builder::MaxIndex,
+    Ctor: tess::StrokeVertexConstructor<OutputVertex>,
+{
+    fn add_stroke_vertex(
+        &mut self,
+        vertex: tess::StrokeVertex,
+    ) -> Result<tess::VertexId, tess::geometry_builder::GeometryBuilderError> {
+        self.0.add_stroke_vertex(vertex)
+    }
+}
+
 #[allow(clippy::trivially_copy_pass_by_ref)] // lyon takes &FillOptions
 fn fill(
     tess: &mut ResMut<FillTessellator>,
@@ -105,7 +166,10 @@ fn fill(
     if let Err(e) = tess.tessellate_path(
         path,
         &mode.options,
-        &mut BuffersBuilder::new(buffers, VertexConstructor { color: mode.color }),
+        &mut CcwBuffersBuilder(BuffersBuilder::new(
+            buffers,
+            VertexConstructor { color: mode.color },
+        )),
     ) {
         error!("FillTessellator error: {:?}", e);
     }
@@ -121,7 +185,10 @@ fn stroke(
     if let Err(e) = tess.tessellate_path(
         path,
         &mode.options,
-        &mut BuffersBuilder::new(buffers, VertexConstructor { color: mode.color }),
+        &mut CcwBuffersBuilder(BuffersBuilder::new(
+            buffers,
+            VertexConstructor { color: mode.color },
+        )),
     ) {
         error!("StrokeTessellator error: {:?}", e);
     }
